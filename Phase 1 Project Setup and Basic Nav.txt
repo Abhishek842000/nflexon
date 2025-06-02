@@ -1,0 +1,84 @@
+Phase 1: Project Setup and Basic Navigation (1-2 days)
+Initial Setup
+Apply to index.ts
+Run
+Basic Navigation Structure
+Set up Stack Navigator
+Create placeholder screens for all routes
+Implement basic navigation flow
+Phase 2: Core Components (2-3 days)
+Common UI Components
+Button component
+Input fields with validation
+Dropdown component
+Loading spinner
+Error/Success messages
+Header with back button
+QR Scanner Component
+Basic camera integration
+QR code detection
+Error handling
+Success feedback
+Phase 3: Installation Flow (3-4 days)
+Landing Page
+Logo display
+Auto-navigation timer
+Main Menu
+Two main options
+Navigation setup
+QR Scanner 1
+Implement scanner
+Add validation logic
+Show device type feedback
+Location Details
+Dynamic form based on device type
+Dropdown integration
+Form validation
+Navigation buttons
+Installer Instructions
+Static content display
+Navigation
+Loading Screen
+Animation implementation
+Progress feedback
+QR Scanner 2
+Reuse QR scanner
+Success message
+Cabling Testing
+Port visualization
+Touch interaction
+Color feedback
+Panel sliding UI
+Phase 4: Connectivity Map Flow (2-3 days)
+QR Scanner
+Reuse existing scanner
+Modify for this flow
+Apparatus Port View
+Port visualization
+Touch handling
+Navigation to trace
+End-to-End Trace
+Visual path representation
+Connection highlighting
+Detailed information display
+Phase 5: API Integration (2-3 days)
+API Service Setup
+Axios configuration
+Error handling
+Response types
+Integration Points
+QR validation
+Location data
+Connectivity mapping
+Trace data
+Phase 6: Testing and Refinement (2-3 days)
+Testing
+Navigation flow
+Form validation
+API integration
+Error handling
+UI/UX Refinement
+Loading states
+Error messages
+Success feedback
+Animations
