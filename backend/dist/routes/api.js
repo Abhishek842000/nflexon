@@ -8,6 +8,7 @@ const io_1 = require("../controllers/io");
 const pp_1 = require("../controllers/pp");
 const switch_1 = require("../controllers/switch");
 const trace_1 = require("../controllers/trace");
+const connectivityMap_1 = require("../controllers/connectivityMap");
 const router = express_1.default.Router();
 // API-level logger
 router.use((req, res, next) => {
@@ -20,4 +21,5 @@ router.get('/pp-location/:serial', pp_1.getPpLocation);
 router.get('/pp-connectivity/:serial', pp_1.getPpConnectivity);
 router.get('/switch', switch_1.getSwitchConnections);
 router.get('/trace/:mac', trace_1.getFullTrace);
+router.get('/connectivity-map', connectivityMap_1.getConnectivityMap);
 exports.default = router;
