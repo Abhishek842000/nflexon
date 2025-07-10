@@ -8,6 +8,53 @@ interface PPConnection {
   io_port: number;
 }
 
+// Function to generate location-based switch name
+function generateSwitchName(site: string, building: string, floor: string, room: string, sequence: number = 1): string {
+  // Clean and format location components
+  const cleanSite = site.replace(/\s+/g, '');
+  const cleanBuilding = building.replace(/\s+/g, '');
+  const cleanFloor = floor.toString().replace(/\s+/g, '');
+  const cleanRoom = room.replace(/\s+/g, '');
+  
+  // Determine switch type based on location (deterministic, not random)
+  let switchType = 'NETGEAR_M';
+  if (site === 'Allen' && building === '700 Central' && floor === '2') {
+    switchType = 'NETGEAR_M';
+  } else if (site === 'Allen' && building === '450 Century' && floor === '2') {
+    switchType = 'Cisco_Catalyst_2960';
+  } else {
+    // For other locations, use deterministic assignment based on location hash
+    const locationHash = `${site}_${building}_${floor}`.length;
+    const switchTypes = ['NETGEAR_M', 'Cisco_Catalyst_2960', 'HP_ProCurve', 'Dell_PowerConnect', 'Juniper_EX'];
+    switchType = switchTypes[locationHash % switchTypes.length];
+  }
+  
+  return `${switchType}_${cleanSite}_${cleanBuilding}_Floor${cleanFloor}_${cleanRoom}_${sequence}`;
+}
+
+// Function to get switch type from switch name
+export function getSwitchTypeFromName(switchName: string): string {
+  return switchName.split('_')[0] + '_' + switchName.split('_')[1];
+}
+
+// Function to get location info from switch name
+export function getLocationFromSwitchName(switchName: string): { site: string; building: string; floor: string } | null {
+  const parts = switchName.split('_');
+  if (parts.length < 6) return null;
+  
+  // Handle switch types with underscores (like Cisco_Catalyst_2960)
+  let switchTypeEndIndex = 2;
+  if (parts[0] === 'Cisco' && parts[1] === 'Catalyst') {
+    switchTypeEndIndex = 3;
+  }
+  
+  const site = parts[switchTypeEndIndex];
+  const building = parts[switchTypeEndIndex + 1];
+  const floor = parts[switchTypeEndIndex + 2].replace('Floor', '');
+  
+  return { site, building, floor };
+}
+
 export async function populateConnectivityMap(newConnections: PPConnection[]) {
   // 1. Fetch all used switch_name/switch_port pairs and device_mac
   const usedSwitchPairs: Record<string, Set<number>> = {};
@@ -28,15 +75,16 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
     ioTypeMap[row.io_mac] = row.io_type;
   });
 
-  // 3. Fetch site, building, and floor for all pp_serial_no
+  // 3. Fetch site, building, floor, and room for all pp_serial_no
   const ppSerials = [...new Set(newConnections.map(c => c.pp_serial_no))];
-  const ppLocations = await pool.query('SELECT pp_serial_no, site, building, floor FROM nflexon_app.pp_location WHERE pp_serial_no = ANY($1)', [ppSerials]);
-  const ppLocationMap: Record<string, { site: string; building: string; floor: string }> = {};
+  const ppLocations = await pool.query('SELECT pp_serial_no, site, building, floor, room FROM nflexon_app.pp_location WHERE pp_serial_no = ANY($1)', [ppSerials]);
+  const ppLocationMap: Record<string, { site: string; building: string; floor: string; room: string }> = {};
   ppLocations.rows.forEach((row: any) => {
     ppLocationMap[row.pp_serial_no] = {
       site: row.site,
       building: row.building,
-      floor: row.floor
+      floor: row.floor,
+      room: row.room
     };
   });
 
@@ -51,13 +99,13 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
       continue;
     }
     
-    // Only apply 80-20 logic for specific combinations
+    // Apply 80-20 logic for specific combinations with their designated switches
     if (location.site === 'Allen' && location.building === '700 Central' && location.floor === '2') {
       centralConns.push(conn);
     } else if (location.site === 'Allen' && location.building === '450 Century' && location.floor === '2') {
       centuryConns.push(conn);
     } else {
-      // Any other combination gets minimal assignment
+      // All other combinations also get 80-20 logic with location-based switch assignment
       otherConns.push(conn);
     }
   }
@@ -70,16 +118,15 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
   }
   const [centralFull, centralMinimal] = split80_20(centralConns);
   const [centuryFull, centuryMinimal] = split80_20(centuryConns);
-  // All otherConns are minimal
+  const [otherFull, otherMinimal] = split80_20(otherConns); // Apply 80-20 to other connections too
 
   // 6. Assign unique switch_port and device_mac
-  const switchCounters: Record<string, number> = {
-    'NETGEAR_M': 1,
-    'Cisco_Catalyst_2960': 1,
-  };
+  const switchCounters: Record<string, number> = {};
+  
   function getNextSwitchPort(switchName: string) {
     if (!usedSwitchPairs[switchName]) usedSwitchPairs[switchName] = new Set();
-    let port = switchCounters[switchName] || 1;
+    if (!switchCounters[switchName]) switchCounters[switchName] = 1;
+    let port = switchCounters[switchName];
     while (usedSwitchPairs[switchName].has(port)) port++;
     usedSwitchPairs[switchName].add(port);
     switchCounters[switchName] = port + 1;
@@ -94,10 +141,44 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
     return mac;
   }
 
+  // Function to generate realistic network devices with weighted distribution
+  function generateNetworkDevice(): string {
+    const devices = [
+      { name: 'Computer', weight: 35 },         // Most common - office computers
+      { name: 'IP Phone', weight: 20 },         // Common in office environments
+      { name: 'Security Camera', weight: 15 },  // Common for surveillance
+      { name: 'Network Printer', weight: 10 },  // Office printers
+      { name: 'Access Point', weight: 8 },      // WiFi access points
+      { name: 'Television', weight: 5 },        // Display screens and TVs
+      { name: 'VoIP Phone', weight: 3 },        // Modern phone systems
+      { name: 'Digital Signage', weight: 2 },   // Display systems
+      { name: 'Video Conference Unit', weight: 2 } // Meeting room equipment
+    ];
+    
+    // Calculate total weight
+    const totalWeight = devices.reduce((sum, device) => sum + device.weight, 0);
+    
+    // Generate random number
+    const random = Math.random() * totalWeight;
+    
+    // Find the device based on weight
+    let currentWeight = 0;
+    for (const device of devices) {
+      currentWeight += device.weight;
+      if (random <= currentWeight) {
+        return device.name;
+      }
+    }
+    
+    // Fallback to computer if something goes wrong
+    return 'Computer';
+  }
+
   // 7. Insert into connectivity_map
   // Central (Allen, 700 Central, 2, NETGEAR_M)
   for (const conn of centralFull) {
-    const switchName = 'NETGEAR_M';
+    const location = ppLocationMap[conn.pp_serial_no];
+    const switchName = generateSwitchName(location.site, location.building, location.floor.toString(), location.room);
     const switchPort = getNextSwitchPort(switchName);
     await pool.query(
       `INSERT INTO nflexon_app.connectivity_map
@@ -110,7 +191,7 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
         conn.io_mac,
         conn.io_port,
         ioTypeMap[conn.io_mac] || null,
-        Math.random() < 0.5 ? 'Printer' : 'PTZ Camera',
+        generateNetworkDevice(),
         generateUniqueMac(),
         switchName,
         switchPort
@@ -134,7 +215,8 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
   }
   // Century (Allen, 450 Century, 2, Cisco_Catalyst_2960)
   for (const conn of centuryFull) {
-    const switchName = 'Cisco_Catalyst_2960';
+    const location = ppLocationMap[conn.pp_serial_no];
+    const switchName = generateSwitchName(location.site, location.building, location.floor.toString(), location.room);
     const switchPort = getNextSwitchPort(switchName);
     await pool.query(
       `INSERT INTO nflexon_app.connectivity_map
@@ -147,7 +229,7 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
         conn.io_mac,
         conn.io_port,
         ioTypeMap[conn.io_mac] || null,
-        Math.random() < 0.5 ? 'Printer' : 'PTZ Camera',
+        generateNetworkDevice(),
         generateUniqueMac(),
         switchName,
         switchPort
@@ -169,8 +251,30 @@ export async function populateConnectivityMap(newConnections: PPConnection[]) {
       ]
     );
   }
-  // All other combinations: minimal only
-  for (const conn of otherConns) {
+  // All other combinations: also get 80-20 logic with location-based switches
+  for (const conn of otherFull) {
+    const location = ppLocationMap[conn.pp_serial_no];
+    const switchName = generateSwitchName(location.site, location.building, location.floor.toString(), location.room);
+    const switchPort = getNextSwitchPort(switchName);
+    await pool.query(
+      `INSERT INTO nflexon_app.connectivity_map
+        (pp_serial_no, ru, pp_port, io_mac, io_port, io_type, device, device_mac, switch_name, switch_port)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        conn.pp_serial_no,
+        conn.ru,
+        conn.pp_port,
+        conn.io_mac,
+        conn.io_port,
+        ioTypeMap[conn.io_mac] || null,
+        generateNetworkDevice(),
+        generateUniqueMac(),
+        switchName,
+        switchPort
+      ]
+    );
+  }
+  for (const conn of otherMinimal) {
     await pool.query(
       `INSERT INTO nflexon_app.connectivity_map
         (pp_serial_no, ru, pp_port, io_mac, io_port, io_type)

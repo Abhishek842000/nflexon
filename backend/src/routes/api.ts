@@ -3,7 +3,7 @@ import { getIoLocation, getIoConnectivity, saveIoLocation } from '../controllers
 import { getPpLocation, getPpConnectivity, savePpLocation, autoConnectPPs, getPpConnectivityByIoMac } from '../controllers/pp';
 import { getSwitchConnections } from '../controllers/switch';
 import { getFullTrace } from '../controllers/trace';
-import { getConnectivityMap, getSwitchLocations } from '../controllers/connectivityMap';
+import { getConnectivityMap } from '../controllers/connectivityMap';
 import { getAllIoLocations, getAllPpLocations } from '../controllers/io';
 
 const router = express.Router();
@@ -32,7 +32,6 @@ router.post('/auto-connectivity', autoConnectPPs as RequestHandler);
 
 // Other routes
 router.get('/switch', getSwitchConnections as RequestHandler);
-router.get('/switch-locations', getSwitchLocations as RequestHandler);
 router.get('/trace/:mac', getFullTrace as RequestHandler);
 router.get('/connectivity-map', getConnectivityMap as RequestHandler);
 

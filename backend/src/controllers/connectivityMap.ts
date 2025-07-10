@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
 import { pool } from '../aws/db';
-import { getLocationFromSwitchName } from '../utils/connectivityMapGenerator';
 
 export const getConnectivityMap = async (req: Request, res: Response) => {
   try {
-    const { type } = req.query;
+    const { type, switch_name } = req.query;
 
     let query = `
       SELECT 
@@ -23,7 +22,11 @@ export const getConnectivityMap = async (req: Request, res: Response) => {
     `;
     const params: any[] = [];
 
-    if (type === 'PP') {
+    // Handle switch_name query for fetching active ports
+    if (switch_name) {
+      query += ` AND switch_name = $1`;
+      params.push(switch_name);
+    } else if (type === 'PP') {
       const { pp_serial_no, ru, pp_port } = req.query;
       if (pp_serial_no && ru && pp_port) {
         query += ` AND pp_serial_no = $1 AND ru = $2 AND pp_port = $3`;
@@ -70,51 +73,5 @@ export const getConnectivityMap = async (req: Request, res: Response) => {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
     return;
-  }
-};
-
-export const getSwitchLocations = async (req: Request, res: Response) => {
-  try {
-    // Fetch all unique switch names from the connectivity map
-    const query = `
-      SELECT DISTINCT switch_name 
-      FROM nflexon_app.connectivity_map 
-      WHERE switch_name IS NOT NULL AND switch_name != ''
-      ORDER BY switch_name
-    `;
-    
-    const result = await pool.query(query);
-    
-    // Parse switch names to extract location information
-    const switchLocations: Array<{
-      site: string;
-      building: string;
-      floor: string;
-      room?: string;
-      switch_name: string;
-    }> = [];
-    
-    for (const row of result.rows) {
-      const location = getLocationFromSwitchName(row.switch_name);
-      if (location) {
-        switchLocations.push({
-          ...location,
-          switch_name: row.switch_name
-        });
-      }
-    }
-    
-    res.json({
-      success: true,
-      data: switchLocations
-    });
-    
-  } catch (error) {
-    console.error('Error fetching switch locations:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
   }
 }; 
